@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"math/rand"
 	"sync"
 	"time"
 
@@ -8,8 +9,12 @@ import (
 )
 
 const (
-	heartbeatInterval = 50 * time.Millisecond
+	heartbeatBaseInterval = 50 * time.Millisecond
 )
+
+func heartbeatInterval() time.Duration {
+	return heartbeatBaseInterval + time.Duration(rand.Intn(50))*time.Millisecond
+}
 
 type NodeState int
 

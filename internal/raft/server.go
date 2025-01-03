@@ -97,3 +97,45 @@ func (n *Node) AppendEntries(ctx context.Context, req *rpcv1.AppendEntriesReques
 		Success: true,
 	}, nil
 }
+
+func (n *Node) RequestVote(ctx context.Context, req *rpcv1.RequestVoteRequest) (*rpcv1.RequestVoteResponse, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	log.Printf("Node %d: received RequestVote RPC from Candidate %d in Term %d\n", n.id, req.CandidateId, req.Term)
+
+	defaultResp := &rpcv1.RequestVoteResponse{
+		Term:        n.ps.currentTerm,
+		VoteGranted: false,
+	}
+
+	// 1. Reply false if term < currentTerm
+	if req.GetTerm() < n.ps.currentTerm {
+		return defaultResp, nil
+	}
+
+	// 2. If votedFor is null or candidateId and candidate’s log is at least as up-to-date as receiver’s log, grant vote
+	if n.ps.votedFor == -1 || n.ps.votedFor == req.GetCandidateId() {
+		lastLogIndex := int32(len(n.ps.logs))
+		lastLogTerm := int32(0)
+		if lastLogIndex > 0 {
+			lastLogTerm = n.ps.logs[lastLogIndex-1].GetTerm()
+		}
+
+		if req.GetLastLogTerm() > lastLogTerm || (req.GetLastLogTerm() == lastLogTerm && req.GetLastLogIndex() >= lastLogIndex) {
+			n.ps.votedFor = req.GetCandidateId()
+			// Reset election timer
+			// non-blocking send
+			select {
+			case n.electionCh <- struct{}{}:
+			default:
+			}
+			log.Printf("Node %d: voted for Candidate %d in Term %d\n", n.id, req.CandidateId, req.Term)
+		}
+	}
+
+	return &rpcv1.RequestVoteResponse{
+		Term:        n.ps.currentTerm,
+		VoteGranted: true,
+	}, nil
+}
