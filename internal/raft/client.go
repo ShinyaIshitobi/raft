@@ -79,21 +79,6 @@ func (n *Node) sendAppendEntries(peer Peer) {
 		return
 	}
 
-	//// If peer's term is greater than current term, convert to follower
-	//if resp.GetTerm() > n.ps.currentTerm {
-	//	n.ps.currentTerm = resp.GetTerm()
-	//	n.ps.votedFor = -1
-	//	n.state = Follower
-	//	log.Printf("Node %d: converted to Follower in Term %d\n", n.id, n.ps.currentTerm)
-	//	n.appendEntriesResultCh <- AppendEntriesResult{
-	//		peer:    peer,
-	//		term:    resp.GetTerm(),
-	//		success: false,
-	//		err:     nil,
-	//	}
-	//	return
-	//}
-
 	n.appendEntriesResultCh <- AppendEntriesResult{
 		peer:    peer,
 		term:    resp.GetTerm(),
