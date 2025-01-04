@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func (n *Node) sendAppendEntries(peer Peer) (int32, bool) {
+func (n *Node) sendAppendEntries(peer Peer) {
 	// establish connection to peer
 	conn, err := grpc.NewClient(
 		peer.addr,
@@ -19,7 +19,13 @@ func (n *Node) sendAppendEntries(peer Peer) (int32, bool) {
 	)
 	if err != nil {
 		log.Printf("Node %d: failed to establish connection to peer %d: %v\n", n.id, peer.id, err)
-		return 0, false
+		n.appendEntriesResultCh <- AppendEntriesResult{
+			peer:    peer,
+			term:    0,
+			success: false,
+			err:     err,
+		}
+		return
 	}
 	defer conn.Close()
 
@@ -30,15 +36,25 @@ func (n *Node) sendAppendEntries(peer Peer) (int32, bool) {
 	// get log entries to send
 	n.mu.Lock()
 	term := n.ps.currentTerm
-	nextIndex := n.vls.nextIndex[peer.id]
+	nextIndex, ok := n.vls.nextIndex[peer.id]
+	if !ok {
+		nextIndex = int32(len(n.ps.logs) + 1)
+		n.vls.nextIndex[peer.id] = nextIndex
+	}
 	prevLogIndex := nextIndex - 1
 	prevLogTerm := int32(0)
 	if prevLogIndex > 0 && prevLogIndex <= int32(len(n.ps.logs)) {
-		prevLogTerm = n.ps.logs[prevLogIndex-1].Term
+		prevLogTerm = n.ps.logs[prevLogIndex-1].GetTerm()
 	}
-	var entries []*rpcv1.LogEntry
-	for i := nextIndex; i <= int32(len(n.ps.logs)); i++ {
-		entries = append(entries, &n.ps.logs[i-1])
+	entries := make([]*rpcv1.LogEntry, 0)
+	if int(prevLogIndex) < len(n.ps.logs) {
+		for i := prevLogIndex; i < int32(len(n.ps.logs)); i++ {
+			entry := &rpcv1.LogEntry{
+				Term:    n.ps.logs[i].GetTerm(),
+				Command: n.ps.logs[i].GetCommand(),
+			}
+			entries = append(entries, entry)
+		}
 	}
 	leaderCommit := n.vs.commitIndex
 	n.mu.Unlock()
@@ -54,25 +70,39 @@ func (n *Node) sendAppendEntries(peer Peer) (int32, bool) {
 	resp, err := client.AppendEntries(ctx, req)
 	if err != nil {
 		log.Printf("Node %d: failed to send AppendEntries RPC to peer %s: %v\n", n.id, peer, err)
-		return 0, false
+		n.appendEntriesResultCh <- AppendEntriesResult{
+			peer:    peer,
+			term:    0,
+			success: false,
+			err:     err,
+		}
+		return
 	}
 
-	n.mu.Lock()
-	defer n.mu.Unlock()
+	//// If peer's term is greater than current term, convert to follower
+	//if resp.GetTerm() > n.ps.currentTerm {
+	//	n.ps.currentTerm = resp.GetTerm()
+	//	n.ps.votedFor = -1
+	//	n.state = Follower
+	//	log.Printf("Node %d: converted to Follower in Term %d\n", n.id, n.ps.currentTerm)
+	//	n.appendEntriesResultCh <- AppendEntriesResult{
+	//		peer:    peer,
+	//		term:    resp.GetTerm(),
+	//		success: false,
+	//		err:     nil,
+	//	}
+	//	return
+	//}
 
-	// If peer's term is greater than current term, convert to follower
-	if resp.GetTerm() > n.ps.currentTerm {
-		n.ps.currentTerm = resp.GetTerm()
-		n.ps.votedFor = -1
-		n.state = Follower
-		log.Printf("Node %d: converted to Follower in Term %d\n", n.id, n.ps.currentTerm)
-		return 0, false
+	n.appendEntriesResultCh <- AppendEntriesResult{
+		peer:    peer,
+		term:    resp.GetTerm(),
+		success: resp.GetSuccess(),
+		err:     nil,
 	}
-
-	return resp.GetTerm(), resp.GetSuccess()
 }
 
-func (n *Node) sendRequestVote(peer Peer) (int32, bool) {
+func (n *Node) sendRequestVote(peer Peer) {
 	// establish connection to peer
 	conn, err := grpc.NewClient(
 		peer.addr,
@@ -81,7 +111,13 @@ func (n *Node) sendRequestVote(peer Peer) (int32, bool) {
 	)
 	if err != nil {
 		log.Printf("Node %d: failed to establish connection to peer %d: %v\n", n.id, peer.id, err)
-		return 0, false
+		n.requestVoteResultCh <- RequestVoteResult{
+			peer:        peer,
+			term:        0,
+			voteGranted: false,
+			err:         err,
+		}
+		return
 	}
 	defer conn.Close()
 
@@ -94,7 +130,7 @@ func (n *Node) sendRequestVote(peer Peer) (int32, bool) {
 	lastLogIndex := int32(len(n.ps.logs))
 	lastLogTerm := int32(0)
 	if lastLogIndex > 0 {
-		lastLogTerm = n.ps.logs[lastLogIndex-1].Term
+		lastLogTerm = n.ps.logs[lastLogIndex-1].GetTerm()
 	}
 	n.mu.Unlock()
 
@@ -107,11 +143,22 @@ func (n *Node) sendRequestVote(peer Peer) (int32, bool) {
 	resp, err := client.RequestVote(ctx, req)
 	if err != nil {
 		log.Printf("Node %d: failed to send RequestVote RPC to peer %d: %v\n", n.id, peer.id, err)
-		return 0, false
+		n.requestVoteResultCh <- RequestVoteResult{
+			peer:        peer,
+			term:        0,
+			voteGranted: false,
+			err:         err,
+		}
+		return
 	}
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	return resp.GetTerm(), resp.GetVoteGranted()
+	n.requestVoteResultCh <- RequestVoteResult{
+		peer:        peer,
+		term:        resp.GetTerm(),
+		voteGranted: resp.GetVoteGranted(),
+		err:         nil,
+	}
 }
