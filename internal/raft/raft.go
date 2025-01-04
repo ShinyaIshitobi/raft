@@ -38,6 +38,14 @@ type Peer struct {
 	addr string
 }
 
+func NewPeer(id int32, addr string) Peer {
+	return Peer{id: id, addr: addr}
+}
+
+func (p Peer) ID() int32 {
+	return p.id
+}
+
 type AppendEntriesResult struct {
 	peer    Peer
 	term    int32
