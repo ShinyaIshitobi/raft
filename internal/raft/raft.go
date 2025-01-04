@@ -40,6 +40,11 @@ type VolatileLeaderState struct {
 	matchIndex map[int32]int32
 }
 
+type Peer struct {
+	id   int32
+	addr string
+}
+
 type Node struct {
 	id   int32
 	addr string
@@ -50,7 +55,7 @@ type Node struct {
 	vs    VolatileState
 	vls   VolatileLeaderState
 
-	peers []string   // List of peer addresses
+	peers []Peer     // List of peers
 	mu    sync.Mutex // Lock for the node
 
 	electionCh chan struct{} // Channel to restart election
@@ -59,7 +64,7 @@ type Node struct {
 	rpcv1.RpcServiceClient
 }
 
-func NewNode(id int32, addr string, peers []string) *Node {
+func NewNode(id int32, addr string, peers []Peer) *Node {
 	return &Node{
 		id:    id,
 		addr:  addr,
