@@ -18,6 +18,19 @@ func (n *Node) AppendEntries(ctx context.Context, req *rpcv1.AppendEntriesReques
 		Success: false,
 	}
 
+	select {
+	case n.electionCh <- struct{}{}:
+	default:
+	}
+
+	if req.GetTerm() > n.ps.currentTerm {
+		n.ps.currentTerm = req.GetTerm()
+		n.ps.votedFor = -1
+		n.state = Follower
+	}
+
+	n.leaderID = req.GetLeaderId()
+
 	// 1. Reply false if term < currentTerm
 	if req.GetTerm() < n.ps.currentTerm {
 		return defaultResp, nil

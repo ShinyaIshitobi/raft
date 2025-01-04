@@ -70,8 +70,9 @@ type Node struct {
 	vs    VolatileState
 	vls   VolatileLeaderState
 
-	peers []Peer     // List of peers
-	mu    sync.Mutex // Lock for the node
+	peers    []Peer     // List of peers
+	leaderID int32      // Leader ID
+	mu       sync.Mutex // Lock for the node
 
 	electionCh            chan struct{} // Channel to restart election
 	appendEntriesResultCh chan AppendEntriesResult
@@ -140,7 +141,7 @@ func (n *Node) runFollower() {
 			n.mu.Lock()
 			n.state = Candidate
 			n.mu.Unlock()
-			log.Panicf("Node %d: converted to Candidate in Term %d\n", n.id, n.ps.currentTerm)
+			log.Printf("Node %d: converted to Candidate in Term %d\n", n.id, n.ps.currentTerm)
 			return
 		}
 	}
@@ -222,6 +223,10 @@ func (n *Node) runLeader() {
 
 	log.Printf("Node %d: starting to send AppendEntries RPC in Term %d\n", n.id, currentTerm)
 
+	for _, peer := range n.peers {
+		go n.sendAppendEntries(peer)
+	}
+
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -266,4 +271,20 @@ func (n *Node) runLeader() {
 			log.Printf("Node %d: received RequestVote RPC from Candidate in Term %d\n", n.id, currentTerm)
 		}
 	}
+}
+
+func (n *Node) getLeaderAddress() string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.state == Leader {
+		return n.addr
+	}
+	if n.leaderID != -1 {
+		for _, peer := range n.peers {
+			if peer.id == n.leaderID {
+				return peer.addr
+			}
+		}
+	}
+	return ""
 }

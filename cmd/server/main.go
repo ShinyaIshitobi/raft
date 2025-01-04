@@ -50,7 +50,7 @@ func parsePeers(peersStr string) []raft.Peer {
 	peers := make([]raft.Peer, 0)
 	peerEntries := strings.Split(peersStr, ",")
 	for _, entry := range peerEntries {
-		parts := strings.Split(entry, ":")
+		parts := strings.Split(entry, "-")
 		if len(parts) != 2 {
 			log.Fatalf("Invalid peer format: %s. Expected format id:addr", entry)
 		}
