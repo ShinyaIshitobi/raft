@@ -78,6 +78,8 @@ type Node struct {
 	appendEntriesResultCh chan AppendEntriesResult
 	requestVoteResultCh   chan RequestVoteResult
 
+	sm *StateMachine
+
 	rpcv1.UnimplementedRpcServiceServer
 	rpcv1.RpcServiceClient
 }
@@ -101,7 +103,9 @@ func NewNode(id int32, addr string, peers []Peer) *Node {
 			matchIndex: make(map[int32]int32),
 		},
 		peers:                 peers,
+		leaderID:              -1,
 		electionCh:            make(chan struct{}, 1), // buffered channel
+		sm:                    NewStateMachine(),
 		appendEntriesResultCh: make(chan AppendEntriesResult, len(peers)),
 		requestVoteResultCh:   make(chan RequestVoteResult, len(peers)),
 	}
@@ -236,6 +240,7 @@ func (n *Node) runLeader() {
 			for _, peer := range n.peers {
 				go n.sendAppendEntries(peer)
 			}
+			n.updateCommitIndex()
 		case res := <-n.appendEntriesResultCh:
 			if res.err != nil {
 				log.Printf("Node %d: failed to send AppendEntries RPC to peer %d: %v\n", n.id, res.peer.id, res.err)
@@ -270,6 +275,42 @@ func (n *Node) runLeader() {
 			// Received RequestVote RPC from Candidate
 			log.Printf("Node %d: received RequestVote RPC from Candidate in Term %d\n", n.id, currentTerm)
 		}
+	}
+}
+
+func (n *Node) updateCommitIndex() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	lastLogIndex := int32(len(n.ps.logs))
+	if lastLogIndex == 0 {
+		return
+	}
+
+	for i := n.vs.commitIndex + 1; i <= lastLogIndex; i++ {
+		count := 1
+		for _, peer := range n.peers {
+			if n.vls.matchIndex[peer.id] >= i {
+				count++
+			}
+		}
+		if count >= len(n.peers)/2+1 && n.ps.logs[i-1].GetTerm() == n.ps.currentTerm {
+			n.vs.commitIndex = i
+			log.Printf("Node %d: updated commitIndex to %d\n", n.id, n.vs.commitIndex)
+			go n.applyLogEntries()
+		}
+	}
+}
+
+func (n *Node) applyLogEntries() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	for n.vs.lastApplied < n.vs.commitIndex {
+		n.vs.lastApplied++
+		entry := &n.ps.logs[n.vs.lastApplied-1]
+		n.sm.Apply(entry)
+		log.Printf("Node %d: applied log entry at index %d: %s\n", n.id, n.vs.lastApplied, entry.Command)
 	}
 }
 
