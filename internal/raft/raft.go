@@ -262,7 +262,6 @@ func (n *Node) runLeader() {
 				n.vls.nextIndex[res.peer.id] = n.vls.matchIndex[res.peer.id] + 1
 				n.mu.Unlock()
 				log.Printf("Node %d: received successful AppendEntries RPC from peer %d in Term %d\n", n.id, res.peer.id, currentTerm)
-				// TODO: Update commitIndex
 			} else {
 				n.mu.Lock()
 				if n.vls.nextIndex[res.peer.id] > 1 {

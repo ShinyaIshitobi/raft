@@ -43,39 +43,37 @@ The current Raft implementation encompasses the following features:
   - Leaders send heartbeats to followers to maintain authority.
   - Handles log replication and consistency checks.
 
+3. **Log Commit and Application Implementation**:
+
+- **Commit Index Update and Log Application**: Implement the logic for updating the commit index based on replicated
+  logs and apply committed log entries to the state machine to reflect changes in the system's state.
+
 ## Future work
 
 The following enhancements and features are planned for future development to improve the Raft implementation:
 
-1. **Log Commit and Application Implementatio**n:
-
-- **Command Reception and Log Appending**: Enable the leader to receive commands from clients, append them to its log,
-  and replicate these entries to follower nodes.
-- **Commit Index Update and Log Application**: Implement the logic for updating the commit index based on replicated
-  logs and apply committed log entries to the state machine to reflect changes in the system's state.
-
-2. **Enhanced Error Handling and Retry Logic**:
+1. **Enhanced Error Handling and Retry Logic**:
 
 - **RPC Failure Management**: Add robust error handling to manage failures in RPC calls, ensuring that transient issues
   do not compromise the system's integrity.
 - **Retry Mechanism**s: Implement retry strategies for failed RPC calls and network interruptions to enhance the
   resilience and reliability of inter-node communication.
 
-3. **Client Interface Implementation**:
+2. **Client Interface Implementation**:
 
 - **External Client Request Handling**: Develop a comprehensive client interface that can accept requests from external
   clients and appropriately redirect them to the current leader.
 - **Graceful Server Shutdown**: Incorporate mechanisms for gracefully shutting down the server, ensuring that ongoing
   processes are completed, resources are released properly, and no data loss occurs during termination.
 
-4. **Persistence**:
+3. **Persistence**:
 
 - **State Persistence**: Implement disk-based storage for Raft's persistent state, including the current term, voted-for
   candidate, and log entries.
 - **State Restoration**: Ensure that nodes can restore their persistent state from disk upon restart, maintaining
   continuity and consistency across the cluster.
 
-5. **Joint Consensus Implementation**:
+4. **Joint Consensus Implementation**:
 
 - **Cluster Configuration Changes**: Implement joint consensus to safely add or remove nodes from the cluster without
   disrupting availability or consistency.
